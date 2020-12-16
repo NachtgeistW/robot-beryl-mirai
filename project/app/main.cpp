@@ -1,17 +1,28 @@
-#include <mirai/mirai.h> // 包含此头文件来使用所有 Mirai++ 的 API
+#include "core/app.h"
+#include "function/ping.h"
+#include "function/sync_twitter_user_timeline.h"
+
+//#include <boost/asio.hpp>
 
 int main()
 {
-    using namespace mirai::literals; // 拉入 _uid _gid 等字面量运算符
-    mirai::Session sess("put auth key here", 123456789_uid); // 创建并授权 bot session
-    sess.config({}, true); // 开启 WebSocket
-    sess.subscribe_messages([&](const mirai::Event& event) // 监听所有消息接受事件
+    using namespace std;
+    using namespace std::literals;
+    using namespace boost;
+
+    try
     {
-        event.dispatch([&](const mirai::GroupMessage& e) // 当收到的消息是群消息时分发到此函数
-        {
-            sess.send_message(e.sender.group.id, e.message.content); // 向消息源的群发送一模一样的消息（复读）
-        });
-    }, mirai::error_logger, mirai::ExecutionPolicy::thread_pool); // 设定异常处理函数为日志输出，执行策略为使用线程池
-    std::cin.get(); // 按回车终止程序
+        beryl::App app;
+        //app.add_component<beryl::Repeat>();
+        //app.add_component<beryl::Angel>();
+        app.add_component<beryl::SyncTwitterTimeline>();
+        app.add_component<beryl::Ping>();
+        std::cin.get();
+        std::cout << "Stopping...\n";
+    }
+    catch (...)
+    {
+        mirai::error_logger();
+    }
     return 0;
 }
