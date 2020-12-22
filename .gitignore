@@ -1,4 +1,4 @@
 .vs/
 out/
 CMakeSettings.json
-config.json
+project/app/config.json

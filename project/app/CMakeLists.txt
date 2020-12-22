@@ -4,9 +4,9 @@ set(APP_NAME app)
 
 set(SOURCE_FILES main.cpp) # Add new source files into this list
 
-add_executable(${APP_NAME} ${SOURCE_FILES})
+add_executable(${APP_NAME} ${SOURCE_FILES} "function/repeat.cpp" "header.hpp" "core/event_manage.cpp" "core/config.h"  "function/g26_select.cpp" "function/repeat.h" "function/g26_select.h" "function/sync_twitter_user_timeline.cpp" "function/sync_twitter_user_timeline.h" "core/app.h" "utils/lock_container.h" "utils/lock_algorithm.h"   "core/component.h" "core/app.cpp" "core/component.cpp" "function/angel.h" "function/angel.cpp" "commands/master_commands.h" "utils/RepeatedTimer.h" "function/ping.h" "function/ping.cpp")
 
-target_compile_features(${APP_NAME} PRIVATE cxx_std_17) # Enforce C++17 or newer
+target_compile_features(${APP_NAME} PRIVATE cxx_std_20) # Enforce C++17 or newer
 set_target_properties(${APP_NAME} PROPERTIES CXX_EXTENSIONS off)
 
 if (MSVC)
@@ -30,5 +30,12 @@ else () # Not Visual Studio, assuming gcc or clang
     target_compile_options(${APP_NAME} PRIVATE -Wall -Wextra -pedantic -Werror)
 endif ()
 
+find_package(cryptopp CONFIG REQUIRED)
+find_package(curl CONFIG REQUIRED)
+find_package(unofficial-sodium CONFIG REQUIRED)
+
 target_link_libraries(${APP_NAME} PRIVATE
-    miraipp)
+    miraipp
+    cryptopp-static
+    CURL::libcurl
+    unofficial-sodium::sodium)
