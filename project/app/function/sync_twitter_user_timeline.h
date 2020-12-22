@@ -5,7 +5,7 @@
 #include "../core/component.h"
 
 using std::string;
-
+using std::vector;
 namespace beryl
 {
     class Tweet;
@@ -19,23 +19,26 @@ namespace beryl
         string id_str_;
         string text_;
         bool truncated_ = false;
-
+        vector<string> media_;
     public:
         Tweet() = default;
         Tweet(string created_at, const unsigned long id, string id_str, string text, const bool truncated) :
             created_at_(std::move(created_at)), id_(id), id_str_(std::move(id_str)), text_(std::move(text)), truncated_(truncated) {}
+        Tweet(string created_at, const unsigned long id, string id_str, string text, const bool truncated, const vector<string>& media) :
+            created_at_(std::move(created_at)), id_(id), id_str_(std::move(id_str)), text_(std::move(text)), truncated_(truncated), media_(media) {}
 
         [[nodiscard]] string get_created_at() const { return created_at_; }
         [[nodiscard]] unsigned long get_id() const { return id_; }
         [[nodiscard]] string get_id_str() const { return id_str_; }
         [[nodiscard]] string get_text() const { return text_; }
+        [[nodiscard]] vector<string> get_media() const { return media_; }
     };
 
     class TwitterConfig final
     {
         friend class SyncTwitterTimeline;
-        string oauth_consumer_key, oauth_consumer_secret, oauth_token,
-            oauth_token_secret, url, latest_tweet_id_str;
+        string oauth_consumer_key_, oauth_consumer_secret_, oauth_token_,
+            oauth_token_secret_, url_, latest_tweet_id_str_;
         void from_json(const nlohmann::json& j);
         void to_json(nlohmann::json& j);
     };
@@ -48,9 +51,9 @@ namespace beryl
         asio::io_context io_;
 
         //一个base64 digit是6bit，一个char是8bit，32/3*4是你要的数组长度
-        const size_t nonce_len = 45;
-        string oauth_nonce, oauth_timestamp;
-        const string oauth_version = "1.0", oauth_signature_method = "HMAC-SHA1";
+        const size_t nonce_len_ = 45;
+        string oauth_nonce_, oauth_timestamp_;
+        const string oauth_version_ = "1.0", oauth_signature_method_ = "HMAC-SHA1";
 
         string get_n_once();
         string get_timestamp();
@@ -60,7 +63,7 @@ namespace beryl
         string prepare_oauth_header(const string& screen_name);
         std::pair<long, string> oauth_get(const string& screen_name);
         std::stack<Tweet> prepare_sending_stack(const std::pair<long, string>& response);
-        void send_tweets_to_group(mirai::gid_t group_id, mirai::Session& sess, string screen_name);
+        void send_tweets_to_group(mirai::gid_t group_id, mirai::Session& sess, const string& screen_name);
     public:
         SyncTwitterTimeline();
         ~SyncTwitterTimeline() override;

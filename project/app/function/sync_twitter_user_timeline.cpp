@@ -29,9 +29,6 @@
 
 #include <fstream>
 
-
-#include "../utils/RepeatedTimer.h"
-
 using std::string;
 using std::vector;
 using json = nlohmann::json;
@@ -114,14 +111,14 @@ namespace beryl
     string SyncTwitterTimeline::collecting_oauth_parameters(const string& screen_name)
     {
         string auth;
-        oauth_nonce = get_n_once();
-        oauth_timestamp = get_timestamp();
-        auth = auth + "oauth_consumer_key=" + config_.oauth_consumer_key;
-        auth = auth + "&oauth_nonce=" + oauth_nonce;
-        auth = auth + "&oauth_signature_method=" + oauth_signature_method;
-        auth = auth + "&oauth_timestamp=" + oauth_timestamp;
-        auth = auth + "&oauth_token=" + config_.oauth_token;
-        auth = auth + "&oauth_version=" + oauth_version;
+        oauth_nonce_ = get_n_once();
+        oauth_timestamp_ = get_timestamp();
+        auth = auth + "oauth_consumer_key=" + config_.oauth_consumer_key_;
+        auth = auth + "&oauth_nonce=" + oauth_nonce_;
+        auth = auth + "&oauth_signature_method=" + oauth_signature_method_;
+        auth = auth + "&oauth_timestamp=" + oauth_timestamp_;
+        auth = auth + "&oauth_token=" + config_.oauth_token_;
+        auth = auth + "&oauth_version=" + oauth_version_;
         auth = auth + "&screen_name=" + screen_name;
 
         return auth;
@@ -140,13 +137,13 @@ namespace beryl
         auto* curl = curl_easy_init();
 
         // prepare percent encoding string
-        const string pe_url = { curl_easy_escape(curl, config_.url.c_str(), static_cast<int>(config_.url.length())) };
+        const string pe_url = { curl_easy_escape(curl, config_.url_.c_str(), static_cast<int>(config_.url_.length())) };
         const string pe_oauth = { curl_easy_escape(curl, origin_oauth_str.c_str(), static_cast<int>(origin_oauth_str.length())) };
         const string pe_oauth_consumer_secret = {
-            curl_easy_escape(curl, config_.oauth_consumer_secret.c_str(), static_cast<int>(config_.oauth_consumer_secret.length()))
+            curl_easy_escape(curl, config_.oauth_consumer_secret_.c_str(), static_cast<int>(config_.oauth_consumer_secret_.length()))
         };
         const string pe_oauth_token_secret = {
-            curl_easy_escape(curl, config_.oauth_token_secret.c_str(), static_cast<int>(config_.oauth_token_secret.length()))
+            curl_easy_escape(curl, config_.oauth_token_secret_.c_str(), static_cast<int>(config_.oauth_token_secret_.length()))
         };
 
         // creating a signature
@@ -168,12 +165,12 @@ namespace beryl
             create_signature(collecting_oauth_parameters(screen_name));
         // joint header
         string auth = "OAuth ";
-        auth = auth + "oauth_consumer_key=\"" + config_.oauth_consumer_key + "\", ";
-        auth = auth + "oauth_nonce=\"" + oauth_nonce + "\", ";
-        auth = auth + "oauth_signature_method=\"" + oauth_signature_method + "\", ";
-        auth = auth + "oauth_timestamp=\"" + oauth_timestamp + "\", ";
-        auth = auth + "oauth_token=\"" + config_.oauth_token + "\", ";
-        auth = auth + "oauth_version=\"" + oauth_version + "\", ";
+        auth = auth + "oauth_consumer_key=\"" + config_.oauth_consumer_key_ + "\", ";
+        auth = auth + "oauth_nonce=\"" + oauth_nonce_ + "\", ";
+        auth = auth + "oauth_signature_method=\"" + oauth_signature_method_ + "\", ";
+        auth = auth + "oauth_timestamp=\"" + oauth_timestamp_ + "\", ";
+        auth = auth + "oauth_token=\"" + config_.oauth_token_ + "\", ";
+        auth = auth + "oauth_version=\"" + oauth_version_ + "\", ";
         auth = auth + "oauth_signature=\"" + oauth_signature + "\"";
 
         return auth;
@@ -199,12 +196,13 @@ namespace beryl
 
         if (curl)
         {
-            curl_easy_setopt(curl, CURLOPT_URL, (config_.url + "?screen_name=" + screen_name).c_str());
+            curl_easy_setopt(curl, CURLOPT_URL, (config_.url_ + "?screen_name=" + screen_name).c_str());
             curl_easy_setopt(curl, CURLOPT_HTTPHEADER, headers);
             curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, write_string);
             curl_easy_setopt(curl, CURLOPT_WRITEDATA, &response);
-            //curl_easy_setopt(curl, CURLOPT_PROXY, "127.0.0.1:1080");
-
+#ifdef DEBUG
+            curl_easy_setopt(curl, CURLOPT_PROXY, "127.0.0.1:1080");
+#endif
             curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &response_code);
 
             curl_easy_perform(curl);
@@ -224,32 +222,51 @@ namespace beryl
         std::stack<Tweet> tweet_stk;
         for (auto& j : js)
         {
-            if (j["id_str"] > config_.latest_tweet_id_str)
-                tweet_stk.push(Tweet(j["created_at"], j["id"], j["id_str"], j["text"], j["truncated"]));
+            if (j["id_str"] > config_.latest_tweet_id_str_)
+            {
+                if (j.contains("extended_entities"))
+                {
+                    vector<string> media;
+                    for (auto& i : j["extended_entities"]["media"])
+                        media.push_back(i["media_url"]);
+                    tweet_stk.push(Tweet(j["created_at"], j["id"], j["id_str"], j["text"], j["truncated"], media));
+                }
+                else
+                {
+                    tweet_stk.push(Tweet(j["created_at"], j["id"], j["id_str"], j["text"], j["truncated"]));
+                }
+            }
         }
         return tweet_stk;
     }
 
-    void SyncTwitterTimeline::send_tweets_to_group(const mirai::gid_t group_id, mirai::Session& sess, string screen_name)
+    void SyncTwitterTimeline::send_tweets_to_group(const mirai::gid_t group_id, mirai::Session& sess, const string& screen_name)
     {
         const auto response = oauth_get(screen_name);
         auto tweet_stk = prepare_sending_stack(response);
 
-        //if (!(e.sender.group.id == 279023542 || e.sender.group.id == 1051608425))
-        //    return;
         using namespace mirai::literals; // 拉入 _uid _gid 等字面量运算符
+#ifdef DEBUG
+        system("set http_proxy=127.0.0.1:1080");
+        system("set https_proxy=127.0.0.1:1080");
+#endif
         while (!tweet_stk.empty())
         {
             if (tweet_stk.size() == 1)
             {
-                config_.latest_tweet_id_str = tweet_stk.top().get_id_str();
+                config_.latest_tweet_id_str_ = tweet_stk.top().get_id_str();
             }
-            auto msg = "https://twitter.com/" + screen_name + "/status/" + tweet_stk.top().get_id_str() + '\n' +
-                tweet_stk.top().get_created_at() + '\n' + 
-                tweet_stk.top().get_text();
-            sess.send_message(group_id, msg);
+            auto plain = "https://twitter.com/" + screen_name + "/status/" + tweet_stk.top().get_id_str() + '\n' + tweet_stk.top().get_created_at() + '\n' + tweet_stk.top().get_text();
+            if (!tweet_stk.top().get_media().empty())
+            {
+                sess.send_message(group_id, mirai::Message{
+                    mirai::msg::Plain{plain},
+                    mirai::msg::Image{{}, tweet_stk.top().get_media()[0], {}}
+                    });
+            }
+            else
+                sess.send_message(group_id, plain);
 
-            std::cout << msg << '\n';
             tweet_stk.pop();
         }
     }
@@ -269,13 +286,11 @@ namespace beryl
     {
         try
         {
+            json j;
+            std::ofstream ofs("config_twitter.json");
             {
-                json j;
-                std::ofstream ofs("config_twitter.json");
-                {
-                    config_.to_json(j);
-                    ofs << j.dump(2);
-                }
+                config_.to_json(j);
+                ofs << j.dump(2);
             }
         }
         catch (...) {}
@@ -283,22 +298,22 @@ namespace beryl
 
     void TwitterConfig::from_json(const nlohmann::json& j)
     {
-        j["oauth_consumer_key"].get_to(oauth_consumer_key);
-        j["oauth_consumer_secret"].get_to(oauth_consumer_secret);
-        j["oauth_token"].get_to(oauth_token);
-        j["oauth_token_secret"].get_to(oauth_token_secret);
-        j["url"].get_to(url);
-        j["latest_tweet_id_str"].get_to(latest_tweet_id_str);
+        j["oauth_consumer_key"].get_to(oauth_consumer_key_);
+        j["oauth_consumer_secret"].get_to(oauth_consumer_secret_);
+        j["oauth_token"].get_to(oauth_token_);
+        j["oauth_token_secret"].get_to(oauth_token_secret_);
+        j["url"].get_to(url_);
+        j["latest_tweet_id_str"].get_to(latest_tweet_id_str_);
     }
 
     void TwitterConfig::to_json(nlohmann::json& j)
     {
-        j["oauth_consumer_key"] = oauth_consumer_key;
-        j["oauth_consumer_secret"] = oauth_consumer_secret;
-        j["oauth_token"] = oauth_token;
-        j["oauth_token_secret"] = oauth_token_secret;
-        j["url"] = url;
-        j["latest_tweet_id_str"] = latest_tweet_id_str;
+        j["oauth_consumer_key"] = oauth_consumer_key_;
+        j["oauth_consumer_secret"] = oauth_consumer_secret_;
+        j["oauth_token"] = oauth_token_;
+        j["oauth_token_secret"] = oauth_token_secret_;
+        j["url"] = url_;
+        j["latest_tweet_id_str"] = latest_tweet_id_str_;
     }
 
     void SyncTwitterTimeline::do_on_event(mirai::Session& sess, const mirai::Event&)
@@ -306,14 +321,27 @@ namespace beryl
         using namespace std::literals;
         try
         {
+#ifdef DEBUG
+            static auto _ = Timer(
+                io_,
+                [&]() { send_tweets_to_group(mirai::gid_t(279023542), sess, "Nightwheel_C"); },
+                1min
+            );
+#else
             static auto _ = Timer(
                 io_,
                 [&]() { send_tweets_to_group(mirai::gid_t(1051608425), sess, "pj_sekai"); },
                 1min
             );
-        }catch(...)
+#endif
+        }
+        catch (std::exception& e)
         {
-            
+            std::cout << e.what() << std::endl;
+        }
+        catch (...)
+        {
+
         }
     }
 
